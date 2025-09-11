@@ -1,4 +1,6 @@
-import 'dart:io';
+import 'dart:io' show File;
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -19,8 +21,8 @@ class EditPage extends StatefulWidget {
 
 class _EditPageState extends State<EditPage> {
   late String currentImagePath;
+  Uint8List? currentImageBytes; // สำหรับ Web
   bool isProcessing = false;
-  static const String apiKey = "FmnquaFZK5y9vugJAnBy9pwE";
 
   @override
   void initState() {
@@ -30,10 +32,14 @@ class _EditPageState extends State<EditPage> {
 
   Future<void> removeBackground() async {
     try {
-      setState(() { isProcessing = true; });
+      setState(() {
+        isProcessing = true;
+      });
 
       String imagePathToSend = currentImagePath;
-      if (currentImagePath.startsWith('assets/')) {
+
+      // ✅ ถ้าเป็น assets ให้ copy ไป temp ก่อน
+      if (currentImagePath.startsWith('assets/') && !kIsWeb) {
         final byteData = await rootBundle.load(currentImagePath);
         final tempDir = await getTemporaryDirectory();
         final tempFile = File('${tempDir.path}/temp.png');
@@ -41,36 +47,70 @@ class _EditPageState extends State<EditPage> {
         imagePathToSend = tempFile.path;
       }
 
+      print("➡️ Sending file: $imagePathToSend");
+
       var request = http.MultipartRequest(
         'POST',
-        Uri.parse('https://api.remove.bg/v1.0/removebg'),
+        Uri.parse('https://bg-remover-api-fksm.onrender.com/remove-bg'),
+
+      
       );
-      request.headers['X-Api-Key'] = apiKey;
-      request.files.add(await http.MultipartFile.fromPath('image_file', imagePathToSend));
+
+      if (kIsWeb) {
+        // บน Web ต้องโหลด bytes จาก asset/imagePath
+        final byteData = await rootBundle.load(imagePathToSend);
+        request.files.add(http.MultipartFile.fromBytes(
+          'file',
+          byteData.buffer.asUint8List(),
+          filename: "upload.png",
+        ));
+      } else {
+        request.files
+            .add(await http.MultipartFile.fromPath('file', imagePathToSend));
+      }
 
       var response = await request.send();
+      print("📡 Status: ${response.statusCode} ${response.reasonPhrase}");
+
+      final respBytes = await response.stream.toBytes();
+
       if (response.statusCode == 200) {
-        final bytes = await response.stream.toBytes();
-        final tempDir = await getTemporaryDirectory();
-        final uniqueName = const Uuid().v4();
-        final newFile = File('${tempDir.path}/removed_bg_$uniqueName.png');
-        await newFile.writeAsBytes(bytes);
-        setState(() { currentImagePath = newFile.path; });
+        if (kIsWeb) {
+          // 🌐 บน Web แสดงด้วย memory
+          setState(() {
+            currentImageBytes = respBytes;
+          });
+        } else {
+          // 📱 Mobile/Desktop เซฟไฟล์ลง temp
+          final tempDir = await getTemporaryDirectory();
+          final uniqueName = const Uuid().v4();
+          final newFile = File('${tempDir.path}/removed_bg_$uniqueName.png');
+          await newFile.writeAsBytes(respBytes);
+
+          setState(() {
+            currentImagePath = newFile.path;
+            currentImageBytes = null;
+          });
+        }
       } else {
-        throw Exception("Remove.bg Error: ${response.statusCode}");
+        print("❌ Error: ${String.fromCharCodes(respBytes)}");
+        throw Exception("Server Error: ${response.statusCode}");
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
       );
+      print("🔥 Exception: $e");
     } finally {
-      setState(() { isProcessing = false; });
+      setState(() {
+        isProcessing = false;
+      });
     }
   }
 
   Future<File> convertToSketch(String path) async {
     String realPath = path;
-    if (path.startsWith('assets/')) {
+    if (path.startsWith('assets/') && !kIsWeb) {
       final byteData = await rootBundle.load(path);
       final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/asset_copy.png');
@@ -97,7 +137,6 @@ class _EditPageState extends State<EditPage> {
   @override
   Widget build(BuildContext context) {
     final isAsset = currentImagePath.startsWith('assets/');
-    final file = File(currentImagePath);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -124,17 +163,25 @@ class _EditPageState extends State<EditPage> {
         children: [
           Expanded(
             child: Center(
-              child: isAsset
+              child: currentImageBytes != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(20),
-                      child: Image.asset(currentImagePath, fit: BoxFit.contain),
+                      child: Image.memory(currentImageBytes!,
+                          fit: BoxFit.contain),
                     )
-                  : file.existsSync()
+                  : isAsset
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(20),
-                          child: Image.file(file, fit: BoxFit.contain),
+                          child: Image.asset(currentImagePath,
+                              fit: BoxFit.contain),
                         )
-                      : const Text('ไม่พบไฟล์รูปภาพ'),
+                      : File(currentImagePath).existsSync()
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: Image.file(File(currentImagePath),
+                                  fit: BoxFit.contain),
+                            )
+                          : const Text('ไม่พบไฟล์รูปภาพ'),
             ),
           ),
           if (isProcessing)
@@ -159,7 +206,16 @@ class _EditPageState extends State<EditPage> {
                   textColor: Colors.black,
                   backgroundColor: Colors.white,
                   onTap: () async {
-                    File sketchFile = await convertToSketch(currentImagePath);
+                    if (kIsWeb) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content:
+                                Text("ยังไม่รองรับ Preview Line Art บน Web")),
+                      );
+                      return;
+                    }
+                    File sketchFile =
+                        await convertToSketch(currentImagePath);
                     showDialog(
                       context: context,
                       builder: (context) {
@@ -202,7 +258,9 @@ class _EditPageState extends State<EditPage> {
             child: Icon(icon, size: 26),
           ),
           const SizedBox(height: 6),
-          Text(label, style: TextStyle(fontSize: 13, color: textColor), textAlign: TextAlign.center),
+          Text(label,
+              style: TextStyle(fontSize: 13, color: textColor),
+              textAlign: TextAlign.center),
         ],
       ),
     );

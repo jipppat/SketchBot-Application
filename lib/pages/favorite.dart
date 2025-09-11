@@ -46,7 +46,7 @@ class FavoritePage extends StatelessWidget {
             'Favorite Pictures',
             style: TextStyle(color: Colors.white),
           ),
-          backgroundColor: const Color.fromARGB(255, 187, 12, 61),
+          backgroundColor: const Color.fromARGB(255, 19, 31, 140),
           centerTitle: true,
         ),
         body: favorites.isEmpty

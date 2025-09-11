@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'auth_wrapper.dart';
 
-import 'pages/login.dart';
-
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -14,7 +19,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'My App',
       theme: ThemeData(primarySwatch: Colors.indigo),
-      home: LoginPage(), 
+      home: const AuthWrapper(), // ✅ คุม flow ด้วย AuthWrapper
       debugShowCheckedModeBanner: false,
     );
   }

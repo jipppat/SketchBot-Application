@@ -19,35 +19,34 @@ class _RobotPageState extends State<RobotPage> {
     _connectRos();
   }
 
-  Future<void> _connectRos() async {
-    ros = Ros(url: 'ws://172.27.209.93:9090'); // 👉 เปลี่ยนเป็น IP VM ของ ROSBridge
+ void _connectRos() async {
+  ros = Ros(url: 'ws://172.27.209.93:9090');
 
-    try {
-      ros.connect();
-      print("✅ Connected to ROS!");
-      setState(() => rosConnected = true);
+  try {
+     ros.connect();
+    print("✅ Connected to ROS!");
+    setState(() => rosConnected = true);
 
-      // กำหนด Topic สำหรับ publish
-      poseTopic = Topic(
-        ros: ros,
-        name: '/arm_target_pose',
-        type: 'geometry_msgs/PoseStamped',
-      );
-    } catch (e) {
-      print("⚠️ Failed to connect to ROS: $e");
-      setState(() => rosConnected = false);
-    }
-  }
-
-  Future<void> _disconnectRos() async {
-    try {
-      await ros.close();
-      print("❌ Disconnected from ROS!");
-    } catch (e) {
-      print("⚠️ Error while closing: $e");
-    }
+    poseTopic = Topic(
+      ros: ros,
+      name: '/arm_target_pose',
+      type: 'geometry_msgs/PoseStamped',
+    );
+  } catch (e) {
+    print("⚠️ Error while connecting: $e");
     setState(() => rosConnected = false);
   }
+}
+
+void _disconnectRos() {
+  try {
+    ros.close();
+    print("❌ Disconnected from ROS!");
+  } catch (e) {
+    print("⚠️ Error while closing: $e");
+  }
+  setState(() => rosConnected = false);
+}
 
   void _sendPose() {
     if (!rosConnected || poseTopic == null) {
@@ -63,7 +62,7 @@ class _RobotPageState extends State<RobotPage> {
       }
     };
 
-    poseTopic!.publish(msg); // ✅ ไม่ต้อง advertise()
+    poseTopic!.publish(msg);
     print("📤 Pose published: $msg");
   }
 

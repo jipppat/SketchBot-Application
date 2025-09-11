@@ -61,17 +61,14 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         HomePage(
           favorites: favorites,
           onFavoriteToggle: toggleFavorite,
-          profileImage: profileImage,
-          profileName: profileName,
+         
         ),
         FavoritePage(
           favorites: favorites,
           onFavoriteToggle: toggleFavorite,
         ),
         const SavePage(),
-        ProfilePage(
-          onUpdate: updateProfile,
-        ),
+        ProfilePage(),
       ];
 
   @override
