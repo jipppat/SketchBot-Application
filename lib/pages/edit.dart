@@ -31,82 +31,91 @@ class _EditPageState extends State<EditPage> {
   }
 
   Future<void> removeBackground() async {
-    try {
-      setState(() {
-        isProcessing = true;
-      });
+  try {
+    setState(() {
+      isProcessing = true;
+    });
 
-      String imagePathToSend = currentImagePath;
+    String imagePathToSend = currentImagePath;
 
-      // ✅ ถ้าเป็น assets ให้ copy ไป temp ก่อน
-      if (currentImagePath.startsWith('assets/') && !kIsWeb) {
-        final byteData = await rootBundle.load(currentImagePath);
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/temp.png');
-        await tempFile.writeAsBytes(byteData.buffer.asUint8List());
-        imagePathToSend = tempFile.path;
-      }
+    // ✅ ถ้าเป็น assets ให้ copy ไป temp ก่อน
+    if (currentImagePath.startsWith('assets/') && !kIsWeb) {
+      final byteData = await rootBundle.load(currentImagePath);
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/temp.png');
+      await tempFile.writeAsBytes(byteData.buffer.asUint8List());
+      imagePathToSend = tempFile.path;
+    }
 
-      print("➡️ Sending file: $imagePathToSend");
+    print("➡️ Sending file: $imagePathToSend");
 
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('https://bg-remover-api-fksm.onrender.com/remove-bg'),
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('https://bg-remover-api-fksm.onrender.com/remove-bg'),
+    );
 
-      
-      );
+    if (kIsWeb) {
+      final byteData = await rootBundle.load(imagePathToSend);
+      request.files.add(http.MultipartFile.fromBytes(
+        'file',
+        byteData.buffer.asUint8List(),
+        filename: "upload.png",
+      ));
+    } else {
+      request.files.add(await http.MultipartFile.fromPath('file', imagePathToSend));
+    }
 
-      if (kIsWeb) {
-        // บน Web ต้องโหลด bytes จาก asset/imagePath
-        final byteData = await rootBundle.load(imagePathToSend);
-        request.files.add(http.MultipartFile.fromBytes(
-          'file',
-          byteData.buffer.asUint8List(),
-          filename: "upload.png",
-        ));
-      } else {
-        request.files
-            .add(await http.MultipartFile.fromPath('file', imagePathToSend));
-      }
+    // ✅เพิ่ม timeout กันค้าง
+    var response = await request.send().timeout(
+  const Duration(seconds: 30),
+  onTimeout: () {
+    throw Exception("⏳ Request timed out");
+  },
+);
 
-      var response = await request.send();
-      print("📡 Status: ${response.statusCode} ${response.reasonPhrase}");
+print("📡 Status: ${response.statusCode} ${response.reasonPhrase}");
+print("📡 Headers: ${response.headers}");
 
-      final respBytes = await response.stream.toBytes();
+final respBytes = await response.stream.toBytes();
 
-      if (response.statusCode == 200) {
-        if (kIsWeb) {
-          // 🌐 บน Web แสดงด้วย memory
-          setState(() {
-            currentImageBytes = respBytes;
-          });
-        } else {
-          // 📱 Mobile/Desktop เซฟไฟล์ลง temp
-          final tempDir = await getTemporaryDirectory();
-          final uniqueName = const Uuid().v4();
-          final newFile = File('${tempDir.path}/removed_bg_$uniqueName.png');
-          await newFile.writeAsBytes(respBytes);
+// ✅ เช็ค content-type ว่าเป็นรูปจริงไหม
+if (response.headers['content-type']?.contains("image/png") == true) {
+  if (kIsWeb) {
+    setState(() {
+      currentImageBytes = respBytes;
+    });
+  } else {
+    final tempDir = await getTemporaryDirectory();
+    final uniqueName = const Uuid().v4();
+    final newFile = File('${tempDir.path}/removed_bg_$uniqueName.png');
+    await newFile.writeAsBytes(respBytes);
 
-          setState(() {
-            currentImagePath = newFile.path;
-            currentImageBytes = null;
-          });
-        }
-      } else {
-        print("❌ Error: ${String.fromCharCodes(respBytes)}");
-        throw Exception("Server Error: ${response.statusCode}");
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
-      );
-      print("🔥 Exception: $e");
-    } finally {
+    setState(() {
+      currentImagePath = newFile.path;
+      currentImageBytes = null;
+    });
+  }
+} else {
+  // ❌ ไม่ใช่รูป → ถือว่าเป็น error
+  final errorMsg = String.fromCharCodes(respBytes);
+  throw Exception("Server Error: $errorMsg");
+}
+
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
+    );
+    print("🔥 Exception: $e");
+  } finally {
+    // ✅ ไม่ว่าผลลัพธ์จะสำเร็จหรือล้มเหลว ต้องหยุดโหลดเสมอ
+    if (mounted) {
       setState(() {
         isProcessing = false;
       });
     }
   }
+}
+
 
   Future<File> convertToSketch(String path) async {
     String realPath = path;

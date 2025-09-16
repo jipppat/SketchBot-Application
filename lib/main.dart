@@ -17,9 +17,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'My App',
+      title: 'SketchBot',
       theme: ThemeData(primarySwatch: Colors.indigo),
-      home: const AuthWrapper(), // ✅ คุม flow ด้วย AuthWrapper
+      home: const AuthWrapper(), // ✅ ใช้ AuthWrapper เป็นตัวคุม flow
       debugShowCheckedModeBanner: false,
     );
   }

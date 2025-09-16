@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_plugin_android_lifecycle: ^2.0.6
-  image_picker: ^0.8.7+3
+  image_picker: ^1.2.0
   shared_preferences: ^2.1.1
   cupertino_icons: ^1.0.8
   http: ^1.2.2
@@ -20,27 +20,28 @@ dependencies:
   flutter_painter_v2: ^2.1.0+1
   image: ^4.2.0
   roslibdart: 0.0.1-dev+4
+  
+  # ✅ ใช้เวอร์ชันที่รองรับ Flutter 3.29
   firebase_core: ^4.1.0
+  firebase_auth: ^6.0.2
   cloud_firestore: ^6.0.1
   firebase_storage: ^13.0.1
-  firebase_auth: ^6.0.2
   google_sign_in: ^6.2.1
+
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
-  flutter_launcher_icons: ^0.13.1   
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter_icons:
   android: true
   ios: true
-  image_path: "assets/images/newlogo.png"   
+  image_path: "assets/images/newlogo.png"
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/images/
-    - assets/images/google.png
-    - assets/images/newlogo.png

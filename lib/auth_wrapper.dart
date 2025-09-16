@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'pages/homepage.dart';
+import 'pages/homescaffold.dart';
 import 'pages/login.dart';
 
 class AuthWrapper extends StatelessWidget {
@@ -12,20 +12,15 @@ class AuthWrapper extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasData) {
-          // 🔹 ต้องส่ง favorites และ onFavoriteToggle
-          return HomePage(
-            favorites: [],
-            onFavoriteToggle: (url) {
-              // ตอนนี้ยังไม่ต้องทำอะไร (คุณอาจจะเก็บลง Firestore ทีหลังได้)
-              debugPrint("Favorite toggled: $url");
-            },
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
           );
         }
-
+        if (snapshot.hasData) {
+          // ✅ ถ้า login แล้ว → เข้าหน้า HomeScaffold ที่มี BottomNavigationBar
+          return const HomeScaffold();
+        }
+        // 🚪 ถ้ายังไม่ได้ login → ไป LoginPage
         return const LoginPage();
       },
     );

@@ -36,19 +36,23 @@ class _ProfilePageState extends State<ProfilePage> {
       _email = user.email ?? "";
     });
 
-    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-    if (doc.exists) {
+    final doc =
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+
+    if (doc.exists && mounted) {
+      final data = doc.data() ?? {};
       setState(() {
-        _nameController.text = doc['name'] ?? "No name";
-        _dobController.text = doc['dob'] ?? "1990-01-01";
-        _imageUrl = doc['imageUrl'];
+        _nameController.text = data['name'] ?? "";
+        _dobController.text = data['dob'] ?? "";
+        _imageUrl = data['imageUrl'];
       });
     }
   }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+    final picked =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (picked != null) {
       setState(() {
         _imageFile = File(picked.path);
@@ -62,9 +66,17 @@ class _ProfilePageState extends State<ProfilePage> {
 
     String? imageUrl = _imageUrl;
     if (_imageFile != null) {
-      final ref = FirebaseStorage.instance.ref().child('profiles/$uid.jpg');
-      await ref.putFile(_imageFile!);
-      imageUrl = await ref.getDownloadURL();
+      try {
+        final ref = FirebaseStorage.instance.ref().child('profiles/$uid.jpg');
+        await ref.putFile(_imageFile!);
+        imageUrl = await ref.getDownloadURL();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("อัปโหลดรูปผิดพลาด: $e")),
+          );
+        }
+      }
     }
 
     await FirebaseFirestore.instance.collection('users').doc(uid).set({
@@ -74,51 +86,30 @@ class _ProfilePageState extends State<ProfilePage> {
       "imageUrl": imageUrl,
     }, SetOptions(merge: true));
 
-    setState(() {
-      _isSaving = false;
-      _imageUrl = imageUrl;
-    });
+    if (mounted) {
+      setState(() {
+        _isSaving = false;
+        _imageUrl = imageUrl;
+      });
 
-    // ✅ ส่งค่ากลับไปหน้า HomePage
-    Navigator.pop(context, {
-      "name": _nameController.text,
-      "dob": _dobController.text,
-      "email": _email,
-      "imageUrl": imageUrl,
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Profile updated successfully ✅")),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Profile updated ✅")),
+      );
+    }
   }
 
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
-    // 🔹 AuthWrapper จะ redirect ไป LoginPage เอง
-  }
-
-  InputDecoration _inputDecoration(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      filled: true,
-      fillColor: Colors.grey.shade100,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(30),
-        borderSide: BorderSide.none,
-      ),
-      prefixIcon: Icon(icon, color: const Color.fromARGB(255, 19, 31, 140)),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color.fromARGB(255, 19, 31, 140),
-        
+        backgroundColor: const Color(0xFF13208C),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout,color:Color.fromARGB(255, 255, 255, 255),), // 🔹 ปุ่ม Logout
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: _logout,
           )
         ],
@@ -126,16 +117,13 @@ class _ProfilePageState extends State<ProfilePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Header Section
+            // Header
             Container(
               height: 220,
               width: double.infinity,
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    Color.fromARGB(255, 19, 31, 140),
-                    Color.fromARGB(255, 96, 107, 211),
-                  ],
+                  colors: [Color(0xFF13208C), Color(0xFF4055C8)],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -149,15 +137,18 @@ class _ProfilePageState extends State<ProfilePage> {
                       radius: 55,
                       backgroundImage: _imageFile != null
                           ? FileImage(_imageFile!)
-                          : (_imageUrl != null
+                          : (_imageUrl != null && _imageUrl!.isNotEmpty
                               ? NetworkImage(_imageUrl!)
-                              : const AssetImage('assets/images/default_profile.png'))
-                              as ImageProvider,
+                              : const AssetImage(
+                                      'assets/images/default_profile.png'))
+                          as ImageProvider,
                     ),
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    _nameController.text.isNotEmpty ? _nameController.text : "Your Name",
+                    _nameController.text.isNotEmpty
+                        ? _nameController.text
+                        : "Your Name",
                     style: const TextStyle(
                       fontSize: 20,
                       color: Colors.white,
@@ -168,7 +159,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
 
-            // Form Section
+            // Form
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -183,30 +174,40 @@ class _ProfilePageState extends State<ProfilePage> {
                         children: [
                           TextField(
                             controller: _nameController,
-                            decoration: _inputDecoration('Name', Icons.person),
+                            decoration: const InputDecoration(
+                              labelText: "Name",
+                              prefixIcon: Icon(Icons.person),
+                            ),
                           ),
                           const SizedBox(height: 16),
                           TextField(
                             controller: _dobController,
                             readOnly: true,
-                            decoration: _inputDecoration('Date of Birth', Icons.cake),
+                            decoration: const InputDecoration(
+                              labelText: "Date of Birth",
+                              prefixIcon: Icon(Icons.cake),
+                            ),
                             onTap: () async {
-                              FocusScope.of(context).unfocus();
                               final pickedDate = await showDatePicker(
                                 context: context,
-                                initialDate: DateTime.tryParse(_dobController.text) ?? DateTime(1990),
+                                initialDate: DateTime.now(),
                                 firstDate: DateTime(1900),
                                 lastDate: DateTime.now(),
                               );
                               if (pickedDate != null) {
-                                _dobController.text = pickedDate.toIso8601String().split('T').first;
+                                _dobController.text = pickedDate
+                                    .toIso8601String()
+                                    .split('T')
+                                    .first;
                               }
                             },
                           ),
                           const SizedBox(height: 16),
                           TextField(
                             readOnly: true,
-                            decoration: _inputDecoration('Email', Icons.email).copyWith(
+                            decoration: InputDecoration(
+                              labelText: "Email",
+                              prefixIcon: const Icon(Icons.email),
                               hintText: _email,
                             ),
                           ),
@@ -221,8 +222,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: ElevatedButton(
                       onPressed: _isSaving ? null : _saveProfile,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 19, 31, 140),
-                        padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 18),
+                        backgroundColor: const Color(0xFF13208C),
+                        padding: const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
                         ),
@@ -230,8 +231,11 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: _isSaving
                           ? const CircularProgressIndicator(color: Colors.white)
                           : const Text(
-                              'Save',
-                              style: TextStyle(fontSize: 20, color: Colors.white),
+                              "Save",
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: Colors.white,
+                              ),
                             ),
                     ),
                   ),

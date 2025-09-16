@@ -1,7 +1,8 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// 🔹 import หน้าที่คุณมี
 import 'favorite.dart';
 import 'homepage.dart';
 import 'save.dart';
@@ -19,7 +20,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   List<String> favorites = [];
 
   File? profileImage;
-  String profileName = "Hello!,  ";
+  String profileName = "Hello!";
 
   @override
   void initState() {
@@ -57,30 +58,34 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     });
   }
 
+  // 🔹 หน้าที่จะสลับตาม bottom navigation
   List<Widget> get pages => [
         HomePage(
           favorites: favorites,
           onFavoriteToggle: toggleFavorite,
-         
         ),
         FavoritePage(
           favorites: favorites,
           onFavoriteToggle: toggleFavorite,
         ),
         const SavePage(),
-        ProfilePage(),
+        const ProfilePage(),
       ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: currentIndex, children: pages),
+      body: IndexedStack(
+        index: currentIndex,
+        children: pages,
+      ),
       bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: Colors.white,
+        type: BottomNavigationBarType.fixed, // ✅ ใช้กับ 4 tabs
         currentIndex: currentIndex,
-        onTap: (index) => setState(() => currentIndex = index),
         selectedItemColor: Colors.indigo,
         unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
+        onTap: (index) => setState(() => currentIndex = index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'Favorite'),

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -27,10 +26,8 @@ class _HomePageState extends State<HomePage> {
   int currentIndex = 0;
   late Set<String> favorites;
 
-  // เก็บรูปที่ผู้ใช้เพิ่ม แยกตาม Category
   Map<String, List<String>> categoryImages = {};
 
-  // ✅ รูป default (asset) ของแต่ละหมวด
   final Map<String, List<String>> defaultAssets = {
     'Anime': [
       'assets/images/Frieren.jpg',
@@ -70,6 +67,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     favorites = widget.favorites.toSet();
+    _loadUserImages(); // โหลดรูป My Self จาก Firestore
   }
 
   void handleFavoriteToggle(String url) {
@@ -83,7 +81,6 @@ class _HomePageState extends State<HomePage> {
     widget.onFavoriteToggle(url);
   }
 
-  // รายชื่อหมวดหมู่ (มี My Self)
   final List<Map<String, dynamic>> categories = [
     {'title': 'My Self', 'image': 'assets/images/self.jpg'},
     {'title': 'Anime', 'image': 'assets/images/Anime.jpg'},
@@ -93,6 +90,45 @@ class _HomePageState extends State<HomePage> {
     {'title': 'Capybara', 'image': 'assets/images/Capybara.jpg'},
     {'title': 'Cake', 'image': 'assets/images/Cake.jpg'},
   ];
+
+  /// โหลดรูปจาก Firestore (เฉพาะ My Self)
+  Future<void> _loadUserImages() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('my_images')
+        .get();
+
+    setState(() {
+      categoryImages['My Self'] =
+          snapshot.docs.map((doc) => doc['url'] as String).toList();
+    });
+  }
+
+  /// เลือกรูปจาก Gallery แล้วบันทึก Firestore
+  Future<void> pickImageFromGallery() async {
+    final picker = ImagePicker();
+    final pickedFile =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+
+    if (pickedFile != null) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      // บันทึกรูป path ลง Firestore (จริง ๆ ควรใช้ Firebase Storage + URL)
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('my_images')
+          .add({'url': pickedFile.path});
+
+      // โหลดใหม่
+      _loadUserImages();
+    }
+  }
 
   Widget _buildMainHomeContent() {
     return SingleChildScrollView(
@@ -132,13 +168,16 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Icon(Icons.brush,
-                    color: Colors.white.withOpacity(0.9), size: 50),
+                Icon(
+                  Icons.brush,
+                  color: Colors.white.withOpacity(0.9),
+                  size: 50,
+                ),
               ],
             ),
           ),
 
-          // ปุ่ม Add Image + Search
+          // ✅ ปุ่ม Add Image + Search
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Row(
@@ -186,7 +225,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // Categories
+          // Categories GridView
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: GridView.builder(
@@ -203,12 +242,10 @@ class _HomePageState extends State<HomePage> {
                 final category = categories[index];
                 final categoryName = category['title'];
 
-                // ✅ รวม asset + gallery (My Self = gallery only)
                 final List<String> images = [
                   ...(categoryName == "My Self"
-                      ? []
+                      ? (categoryImages['My Self'] ?? [])
                       : (defaultAssets[categoryName] ?? [])),
-                  ...(categoryImages[categoryName] ?? []),
                 ];
 
                 return GestureDetector(
@@ -265,44 +302,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> pickImageFromGallery() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-
-    if (pickedFile != null) {
-      // เลือก Category ที่จะเก็บ
-      String? selectedCategory = await showDialog<String>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text("เลือกหมวดหมู่"),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: categories.map((cat) {
-                return ListTile(
-                  title: Text(cat['title']),
-                  onTap: () => Navigator.pop(context, cat['title']),
-                );
-              }).toList(),
-            ),
-          );
-        },
-      );
-
-      if (selectedCategory != null) {
-        setState(() {
-          categoryImages[selectedCategory] ??= [];
-          categoryImages[selectedCategory]!.add(pickedFile.path);
-        });
-
-        widget.onFavoriteToggle(pickedFile.path);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -314,7 +313,7 @@ class _HomePageState extends State<HomePage> {
         onFavoriteToggle: handleFavoriteToggle,
       ),
       const SavePage(),
-      const ProfilePage(), // ไปแก้ไขข้อมูลได้
+      const ProfilePage(),
     ];
 
     return Scaffold(
@@ -323,22 +322,27 @@ class _HomePageState extends State<HomePage> {
         elevation: 0,
         automaticallyImplyLeading: false,
         title: StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
-              return const Text("welcome");
+              return const Text("Welcome");
             }
-            final data = snapshot.data!;
+            final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
             final name = data['name'] ?? "Guest";
             final imageUrl = data['imageUrl'];
 
             return Row(
               children: [
                 CircleAvatar(
+                  key: ValueKey(imageUrl),
                   radius: 20,
-                  backgroundImage: imageUrl != null
+                  backgroundImage: imageUrl != null && imageUrl.isNotEmpty
                       ? NetworkImage(imageUrl)
-                      : const AssetImage('assets/images/self.jpg') as ImageProvider,
+                      : const AssetImage('assets/images/default_profile.png')
+                          as ImageProvider,
                 ),
                 const SizedBox(width: 12),
                 Text(
