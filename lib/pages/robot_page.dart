@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:roslibdart/roslibdart.dart';
+import 'save.dart'; // ✅ import SavePage
 
 class RobotPage extends StatefulWidget {
   const RobotPage({super.key});
@@ -12,6 +15,7 @@ class _RobotPageState extends State<RobotPage> {
   late Ros ros;
   Topic? poseTopic;
   bool rosConnected = false;
+  bool rosConnecting = false;
 
   @override
   void initState() {
@@ -19,34 +23,42 @@ class _RobotPageState extends State<RobotPage> {
     _connectRos();
   }
 
- void _connectRos() async {
-  ros = Ros(url: 'ws://172.27.209.93:9090');
+  Future<void> _connectRos() async {
+    setState(() => rosConnecting = true);
 
-  try {
-     ros.connect();
-    print("✅ Connected to ROS!");
-    setState(() => rosConnected = true);
+    ros = Ros(url: 'ws://172.27.209.93:9090');
 
-    poseTopic = Topic(
-      ros: ros,
-      name: '/arm_target_pose',
-      type: 'geometry_msgs/PoseStamped',
-    );
-  } catch (e) {
-    print("⚠️ Error while connecting: $e");
+    try {
+       ros.connect(); // ✅ connect แบบ async
+      print("✅ Connected to ROS!");
+      setState(() {
+        rosConnected = true;
+        rosConnecting = false;
+      });
+
+      poseTopic = Topic(
+        ros: ros,
+        name: '/arm_target_pose',
+        type: 'geometry_msgs/PoseStamped',
+      );
+    } catch (e) {
+      print("⚠️ Error while connecting: $e");
+      setState(() {
+        rosConnected = false;
+        rosConnecting = false;
+      });
+    }
+  }
+
+  void _disconnectRos() {
+    try {
+      ros.close();
+      print("❌ Disconnected from ROS!");
+    } catch (e) {
+      print("⚠️ Error while closing: $e");
+    }
     setState(() => rosConnected = false);
   }
-}
-
-void _disconnectRos() {
-  try {
-    ros.close();
-    print("❌ Disconnected from ROS!");
-  } catch (e) {
-    print("⚠️ Error while closing: $e");
-  }
-  setState(() => rosConnected = false);
-}
 
   void _sendPose() {
     if (!rosConnected || poseTopic == null) {
@@ -66,6 +78,25 @@ void _disconnectRos() {
     print("📤 Pose published: $msg");
   }
 
+  Future<void> _savePoseAndGoToSavePage() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final folder = Directory('${dir.path}/sketches');
+    if (!await folder.exists()) {
+      await folder.create(recursive: true);
+    }
+
+    // เก็บไฟล์ JSON (pose data)
+    final file = File('${folder.path}/pose_${DateTime.now().millisecondsSinceEpoch}.json');
+    await file.writeAsString('{"x":0.5,"y":0.0,"z":0.3}');
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const SavePage()),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _disconnectRos();
@@ -80,13 +111,19 @@ void _disconnectRos() {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              rosConnected ? "✅ Connected to ROS" : "❌ Not connected",
-              style: TextStyle(
-                fontSize: 18,
-                color: rosConnected ? Colors.green : Colors.red,
+            if (rosConnecting)
+              const Text(
+                "🔄 Connecting to ROS...",
+                style: TextStyle(fontSize: 18, color: Colors.orange),
+              )
+            else
+              Text(
+                rosConnected ? "✅ Connected to ROS" : "❌ Not connected",
+                style: TextStyle(
+                  fontSize: 18,
+                  color: rosConnected ? Colors.green : Colors.red,
+                ),
               ),
-            ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: rosConnected ? _sendPose : null,
@@ -96,6 +133,11 @@ void _disconnectRos() {
             ElevatedButton(
               onPressed: rosConnected ? _disconnectRos : _connectRos,
               child: Text(rosConnected ? "Disconnect" : "Reconnect"),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: rosConnected ? _savePoseAndGoToSavePage : null,
+              child: const Text("Save & Go to Saved Page"),
             ),
           ],
         ),

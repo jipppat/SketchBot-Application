@@ -31,91 +31,137 @@ class _EditPageState extends State<EditPage> {
   }
 
   Future<void> removeBackground() async {
-  try {
-    setState(() {
-      isProcessing = true;
-    });
-
-    String imagePathToSend = currentImagePath;
-
-    // ✅ ถ้าเป็น assets ให้ copy ไป temp ก่อน
-    if (currentImagePath.startsWith('assets/') && !kIsWeb) {
-      final byteData = await rootBundle.load(currentImagePath);
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/temp.png');
-      await tempFile.writeAsBytes(byteData.buffer.asUint8List());
-      imagePathToSend = tempFile.path;
-    }
-
-    print("➡️ Sending file: $imagePathToSend");
-
-    var request = http.MultipartRequest(
-      'POST',
-      Uri.parse('https://bg-remover-api-fksm.onrender.com/remove-bg'),
-    );
-
-    if (kIsWeb) {
-      final byteData = await rootBundle.load(imagePathToSend);
-      request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        byteData.buffer.asUint8List(),
-        filename: "upload.png",
-      ));
-    } else {
-      request.files.add(await http.MultipartFile.fromPath('file', imagePathToSend));
-    }
-
-    // ✅เพิ่ม timeout กันค้าง
-    var response = await request.send().timeout(
-  const Duration(seconds: 30),
-  onTimeout: () {
-    throw Exception("⏳ Request timed out");
-  },
-);
-
-print("📡 Status: ${response.statusCode} ${response.reasonPhrase}");
-print("📡 Headers: ${response.headers}");
-
-final respBytes = await response.stream.toBytes();
-
-// ✅ เช็ค content-type ว่าเป็นรูปจริงไหม
-if (response.headers['content-type']?.contains("image/png") == true) {
-  if (kIsWeb) {
-    setState(() {
-      currentImageBytes = respBytes;
-    });
-  } else {
-    final tempDir = await getTemporaryDirectory();
-    final uniqueName = const Uuid().v4();
-    final newFile = File('${tempDir.path}/removed_bg_$uniqueName.png');
-    await newFile.writeAsBytes(respBytes);
-
-    setState(() {
-      currentImagePath = newFile.path;
-      currentImageBytes = null;
-    });
-  }
-} else {
-  // ❌ ไม่ใช่รูป → ถือว่าเป็น error
-  final errorMsg = String.fromCharCodes(respBytes);
-  throw Exception("Server Error: $errorMsg");
-}
-
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
-    );
-    print("🔥 Exception: $e");
-  } finally {
-    // ✅ ไม่ว่าผลลัพธ์จะสำเร็จหรือล้มเหลว ต้องหยุดโหลดเสมอ
-    if (mounted) {
+    print("✅ removeBackground called");
+    try {
       setState(() {
-        isProcessing = false;
+        isProcessing = true;
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⏳ กำลังลบพื้นหลัง...")),
+      );
+
+      // 🔹 STEP 1: Warmup server ก่อน
+      try {
+        print("🚀 Warming up server...");
+        final warmup = await http.get(
+          Uri.parse("https://bg-remover-api-fksm.onrender.com/"),
+        ).timeout(const Duration(seconds: 10));
+        print("🔥 Warmup status: ${warmup.statusCode}");
+      } catch (e) {
+        print("⚠️ Warmup error (ไม่เป็นไร ข้ามได้): $e");
+      }
+
+      // 🔹 STEP 2: เตรียมไฟล์สำหรับส่ง
+      String imagePathToSend = currentImagePath;
+
+      if (!kIsWeb && currentImagePath.startsWith('assets/')) {
+        final byteData = await rootBundle.load(currentImagePath);
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/temp.png');
+        await tempFile.writeAsBytes(byteData.buffer.asUint8List());
+        imagePathToSend = tempFile.path;
+      }
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://bg-remover-api-fksm.onrender.com/remove-bg'),
+      );
+
+      if (kIsWeb) {
+        final resizedBytes = await resizeImage(currentImageBytes!);
+        request.files.add(http.MultipartFile.fromBytes(
+          'file',
+          resizedBytes,
+          filename: "upload.png",
+        ));
+      } else {
+        final fileBytes = await File(imagePathToSend).readAsBytes();
+        final resizedBytes = await resizeImage(fileBytes);
+        request.files.add(http.MultipartFile.fromBytes(
+          'file',
+          resizedBytes,
+          filename: "upload.png",
+        ));
+      }
+
+      // 🔹 STEP 3: ส่ง request จริง
+      var response = await request.send().timeout(
+        const Duration(minutes: 2), // ⏫ ขยายเวลา
+        onTimeout: () {
+          throw Exception("⏳ Request timed out (เกิน 2 นาที)");
+        },
+      );
+
+      final respBytes = await response.stream.toBytes();
+
+      if (response.headers['content-type']?.contains("image/png") == true) {
+        if (kIsWeb) {
+          setState(() {
+            currentImageBytes = respBytes;
+          });
+        } else {
+          final tempDir = await getTemporaryDirectory();
+          final uniqueName = const Uuid().v4();
+          final newFile = File('${tempDir.path}/removed_bg_$uniqueName.png');
+          await newFile.writeAsBytes(respBytes);
+
+          setState(() {
+            currentImagePath = newFile.path;
+            currentImageBytes = null;
+          });
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("✅ ลบพื้นหลังเสร็จแล้ว")),
+        );
+      } else {
+        final errorMsg = String.fromCharCodes(respBytes);
+        _showLogDialog("Server Error: $errorMsg");
+        throw Exception("Server Error: $errorMsg");
+      }
+    } catch (e) {
+      _showLogDialog("เกิดข้อผิดพลาด: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isProcessing = false;
+        });
+      }
     }
   }
-}
 
+  /// 📝 ฟังก์ชันช่วยแสดง Log/Error ใน Dialog
+  void _showLogDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Log / Error"),
+          content: SingleChildScrollView(
+            child: Text(message),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("ปิด"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 🖼 ฟังก์ชันย่อรูปก่อนส่งไป API
+  Future<Uint8List> resizeImage(Uint8List inputBytes, {int maxWidth = 800}) async {
+    final original = img.decodeImage(inputBytes);
+    if (original == null) return inputBytes;
+    final resized = img.copyResize(original, width: maxWidth);
+    return Uint8List.fromList(img.encodePng(resized));
+  }
 
   Future<File> convertToSketch(String path) async {
     String realPath = path;

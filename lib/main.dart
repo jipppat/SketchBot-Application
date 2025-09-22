@@ -1,13 +1,30 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart'; // ✅ import ถูกแล้ว
 import 'firebase_options.dart';
 import 'auth_wrapper.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // ✅ ตั้งค่า App Check
+  if (kDebugMode || !Platform.isAndroid) {
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.debug,
+    );
+    debugPrint("🚀 Using App Check: Debug Provider");
+  } else {
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.playIntegrity,
+    );
+    debugPrint("🚀 Using App Check: Play Integrity");
+  }
+
   runApp(const MyApp());
 }
 
@@ -19,7 +36,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'SketchBot',
       theme: ThemeData(primarySwatch: Colors.indigo),
-      home: const AuthWrapper(), // ✅ ใช้ AuthWrapper เป็นตัวคุม flow
+      home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
     );
   }
