@@ -64,25 +64,27 @@ class _RobotPageState extends State<RobotPage> {
     return; // ✅ กัน warning async
   }
 
-  void _subscribeCamera() {
-    cameraTopic!.subscribe((msg) {
-      try {
-        final map = msg as Map; // 👈 cast dynamic → Map
-        final data = map["data"];
+void _subscribeCamera() {
+  cameraTopic!.subscribe((dynamic msg) {
+    try {
+      final map = msg as Map;
+      final data = map["data"];
 
-        if (data is String) {
-          final decoded = base64Decode(data);
-          setState(() {
-            cameraImage = decoded;
-          });
-        } else {
-          debugPrint("⚠️ Camera data is not a string: $data");
-        }
-      } catch (e) {
-        debugPrint("⚠️ Camera decode error: $e");
+      if (data is String) {
+        final decoded = base64Decode(data);
+        setState(() {
+          cameraImage = decoded;
+        });
+      } else {
+        debugPrint("⚠️ Camera data is not a string: $data");
       }
-    });
-  }
+    } catch (e) {
+      debugPrint("⚠️ Camera decode error: $e");
+    }
+    return Future.value();
+  });
+}
+
 
   void _disconnectRos() {
     try {
