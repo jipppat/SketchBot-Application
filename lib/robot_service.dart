@@ -5,7 +5,7 @@ class RosService {
   Topic? pub;
 
   void connect() {
-    ros = Ros(url: 'ws://172.27.209.93:9090');
+    ros = Ros(url: 'ws://172.20.10.4:9090');
 
     ros.connect();
     print("🚀 Trying to connect...");

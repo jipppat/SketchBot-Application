@@ -102,6 +102,8 @@ class _HomePageState extends State<HomePage> {
         .collection('my_images')
         .get();
 
+    if (!mounted) return; // ✅ ป้องกัน setState หลัง dispose
+
     setState(() {
       categoryImages['My Self'] =
           snapshot.docs.map((doc) => doc['url'] as String).toList();
@@ -118,14 +120,12 @@ class _HomePageState extends State<HomePage> {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;
 
-      // บันทึกรูป path ลง Firestore (จริง ๆ ควรใช้ Firebase Storage + URL)
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .collection('my_images')
           .add({'url': pickedFile.path});
 
-      // โหลดใหม่
       _loadUserImages();
     }
   }
@@ -341,8 +341,10 @@ class _HomePageState extends State<HomePage> {
                   radius: 20,
                   backgroundImage: imageUrl != null && imageUrl.isNotEmpty
                       ? NetworkImage(imageUrl)
-                      : const AssetImage('assets/images/default_profile.png')
-                          as ImageProvider,
+                      : null, // ❌ ไม่ใช้ AssetImage แล้ว
+                  child: (imageUrl == null || imageUrl.isEmpty)
+                      ? const Icon(Icons.person, color: Colors.white)
+                      : null,
                 ),
                 const SizedBox(width: 12),
                 Text(

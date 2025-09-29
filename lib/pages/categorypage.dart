@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show DefaultAssetBundle;
 import 'edit.dart';
 import 'robot_page.dart';
 
@@ -39,6 +40,18 @@ class _CategoryPageState extends State<CategoryPage> {
         height: double.infinity,
       );
     }
+  }
+
+  /// ✅ copy asset → temp file
+  Future<String> _prepareImagePath(BuildContext context, String url) async {
+    if (url.startsWith("assets/")) {
+      final byteData = await DefaultAssetBundle.of(context).load(url);
+      final tempDir = await Directory.systemTemp.createTemp();
+      final tempFile = File('${tempDir.path}/${url.split('/').last}');
+      await tempFile.writeAsBytes(byteData.buffer.asUint8List());
+      return tempFile.path;
+    }
+    return url; // ถ้าเป็นไฟล์จริง ใช้ตรง ๆ
   }
 
   void showFullImagePopup(String imageUrl) {
@@ -169,12 +182,14 @@ class _CategoryPageState extends State<CategoryPage> {
                                 icon: const Icon(Icons.edit,
                                     color: Color.fromARGB(255, 7, 74, 129)),
                                 iconSize: 30,
-                                onPressed: () {
+                                onPressed: () async {
+                                  final pathToSend =
+                                      await _prepareImagePath(context, url);
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) =>
-                                          EditPage(imagePath: url),
+                                          EditPage(imagePath: pathToSend),
                                     ),
                                   );
                                 },

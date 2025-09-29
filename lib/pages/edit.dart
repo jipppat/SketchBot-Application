@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image/image.dart' as img;
 import 'robot_page.dart';
+import 'api_config.dart';
 
 class EditPage extends StatefulWidget {
   final String imagePath;
@@ -21,7 +22,7 @@ class EditPage extends StatefulWidget {
 
 class _EditPageState extends State<EditPage> {
   late String currentImagePath;
-  Uint8List? currentImageBytes; // สำหรับ Web
+  Uint8List? currentImageBytes; 
   bool isProcessing = false;
 
   @override
@@ -31,134 +32,79 @@ class _EditPageState extends State<EditPage> {
   }
 
   Future<void> removeBackground() async {
-    print("✅ removeBackground called");
-    try {
+  print("✅ removeBackground called (remove.bg)");
+  try {
+    setState(() => isProcessing = true);
+
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse(ApiConfig.removeBgUrl),
+    );
+
+    // ใส่ API Key
+    request.headers['X-Api-Key'] = ApiConfig.removeBgApiKey;
+
+    // ส่งไฟล์รูปไป
+    request.files.add(await http.MultipartFile.fromPath(
+      'image_file',
+      currentImagePath,
+    ));
+
+    final response = await request.send();
+
+    if (response.statusCode == 200) {
+      final respBytes = await response.stream.toBytes();
+
+      final tempDir = await getTemporaryDirectory();
+      final uniqueName = const Uuid().v4();
+      final newFile = File('${tempDir.path}/removed_bg_$uniqueName.png');
+      await newFile.writeAsBytes(respBytes);
+
       setState(() {
-        isProcessing = true;
+        currentImagePath = newFile.path;
+        currentImageBytes = null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⏳ กำลังลบพื้นหลัง...")),
+        const SnackBar(content: Text("✅ ลบพื้นหลังเสร็จแล้ว")),
       );
-
-      // 🔹 STEP 1: Warmup server ก่อน
-      try {
-        print("🚀 Warming up server...");
-        final warmup = await http.get(
-          Uri.parse("https://bg-remover-api-fksm.onrender.com/"),
-        ).timeout(const Duration(seconds: 10));
-        print("🔥 Warmup status: ${warmup.statusCode}");
-      } catch (e) {
-        print("⚠️ Warmup error (ไม่เป็นไร ข้ามได้): $e");
-      }
-
-      // 🔹 STEP 2: เตรียมไฟล์สำหรับส่ง
-      String imagePathToSend = currentImagePath;
-
-      if (!kIsWeb && currentImagePath.startsWith('assets/')) {
-        final byteData = await rootBundle.load(currentImagePath);
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/temp.png');
-        await tempFile.writeAsBytes(byteData.buffer.asUint8List());
-        imagePathToSend = tempFile.path;
-      }
-
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('https://bg-remover-api-fksm.onrender.com/remove-bg'),
-      );
-
-      if (kIsWeb) {
-        final resizedBytes = await resizeImage(currentImageBytes!);
-        request.files.add(http.MultipartFile.fromBytes(
-          'file',
-          resizedBytes,
-          filename: "upload.png",
-        ));
-      } else {
-        final fileBytes = await File(imagePathToSend).readAsBytes();
-        final resizedBytes = await resizeImage(fileBytes);
-        request.files.add(http.MultipartFile.fromBytes(
-          'file',
-          resizedBytes,
-          filename: "upload.png",
-        ));
-      }
-
-      // 🔹 STEP 3: ส่ง request จริง
-      var response = await request.send().timeout(
-        const Duration(minutes: 2), // ⏫ ขยายเวลา
-        onTimeout: () {
-          throw Exception("⏳ Request timed out (เกิน 2 นาที)");
-        },
-      );
-
-      final respBytes = await response.stream.toBytes();
-
-      if (response.headers['content-type']?.contains("image/png") == true) {
-        if (kIsWeb) {
-          setState(() {
-            currentImageBytes = respBytes;
-          });
-        } else {
-          final tempDir = await getTemporaryDirectory();
-          final uniqueName = const Uuid().v4();
-          final newFile = File('${tempDir.path}/removed_bg_$uniqueName.png');
-          await newFile.writeAsBytes(respBytes);
-
-          setState(() {
-            currentImagePath = newFile.path;
-            currentImageBytes = null;
-          });
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("✅ ลบพื้นหลังเสร็จแล้ว")),
-        );
-      } else {
-        final errorMsg = String.fromCharCodes(respBytes);
-        _showLogDialog("Server Error: $errorMsg");
-        throw Exception("Server Error: $errorMsg");
-      }
-    } catch (e) {
-      _showLogDialog("เกิดข้อผิดพลาด: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("เกิดข้อผิดพลาด: $e")),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          isProcessing = false;
-        });
-      }
+    } else {
+      final errorMsg = await response.stream.bytesToString();
+      _showLogDialog("❌ Remove.bg error: $errorMsg");
     }
+  } catch (e) {
+    _showLogDialog("เกิดข้อผิดพลาด: $e");
+  } finally {
+    if (mounted) setState(() => isProcessing = false);
   }
+}
 
-  /// 📝 ฟังก์ชันช่วยแสดง Log/Error ใน Dialog
+
   void _showLogDialog(String message) {
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Log / Error"),
-          content: SingleChildScrollView(
-            child: Text(message),
+      builder: (context) => AlertDialog(
+        title: const Text("Log / Error"),
+        content: SingleChildScrollView(child: Text(message)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("ปิด"),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("ปิด"),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
 
-  /// 🖼 ฟังก์ชันย่อรูปก่อนส่งไป API
-  Future<Uint8List> resizeImage(Uint8List inputBytes, {int maxWidth = 800}) async {
+  /// ✅ Resize ฝั่ง client เพื่อลดโหลดเซิร์ฟเวอร์
+  Future<Uint8List> resizeImage(Uint8List inputBytes, {int maxWidth = 600}) async {
     final original = img.decodeImage(inputBytes);
     if (original == null) return inputBytes;
+
+    if (original.width <= maxWidth) {
+      return inputBytes;
+    }
+
     final resized = img.copyResize(original, width: maxWidth);
     return Uint8List.fromList(img.encodePng(resized));
   }
@@ -183,7 +129,8 @@ class _EditPageState extends State<EditPage> {
     img.Image finalSketch = img.adjustColor(inverted, contrast: 150);
 
     final tempDir = await getTemporaryDirectory();
-    final sketchFile = File('${tempDir.path}/sketch_${const Uuid().v4()}.png');
+    final sketchFile =
+        File('${tempDir.path}/sketch_${const Uuid().v4()}.png');
     await sketchFile.writeAsBytes(img.encodePng(finalSketch));
 
     return sketchFile;
@@ -264,8 +211,7 @@ class _EditPageState extends State<EditPage> {
                     if (kIsWeb) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content:
-                                Text("ยังไม่รองรับ Preview Line Art บน Web")),
+                            content: Text("ยังไม่รองรับ Preview Line Art บน Web")),
                       );
                       return;
                     }
@@ -273,15 +219,13 @@ class _EditPageState extends State<EditPage> {
                         await convertToSketch(currentImagePath);
                     showDialog(
                       context: context,
-                      builder: (context) {
-                        return Dialog(
-                          insetPadding: const EdgeInsets.all(10),
-                          backgroundColor: Colors.black,
-                          child: InteractiveViewer(
-                            child: Image.file(sketchFile),
-                          ),
-                        );
-                      },
+                      builder: (context) => Dialog(
+                        insetPadding: const EdgeInsets.all(10),
+                        backgroundColor: Colors.black,
+                        child: InteractiveViewer(
+                          child: Image.file(sketchFile),
+                        ),
+                      ),
                     );
                   },
                 ),
@@ -304,7 +248,6 @@ class _EditPageState extends State<EditPage> {
       onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CircleAvatar(
             backgroundColor: backgroundColor,

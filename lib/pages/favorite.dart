@@ -1,9 +1,10 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show DefaultAssetBundle;
 import 'edit.dart';
-import 'dart:io';
 import 'robot_page.dart';
-import 'homescaffold.dart'; 
+import 'homescaffold.dart';
 
 class FavoritePage extends StatelessWidget {
   final List<String> favorites;
@@ -15,19 +16,26 @@ class FavoritePage extends StatelessWidget {
     required this.onFavoriteToggle,
   }) : super(key: key);
 
-  void _editImage(BuildContext context, String imagePath) {
-    if (imagePath.startsWith('assets/') || File(imagePath).existsSync()) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => EditPage(imagePath: imagePath),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ไม่พบไฟล์รูปภาพนี้')),
-      );
+  /// ✅ ฟังก์ชันเตรียม path (asset → temp file)
+  Future<String> _prepareImagePath(BuildContext context, String url) async {
+    if (url.startsWith("assets/")) {
+      final byteData = await DefaultAssetBundle.of(context).load(url);
+      final tempDir = await Directory.systemTemp.createTemp();
+      final tempFile = File('${tempDir.path}/${url.split('/').last}');
+      await tempFile.writeAsBytes(byteData.buffer.asUint8List());
+      return tempFile.path;
     }
+    return url; // ถ้าเป็นไฟล์จริง ใช้ตรง ๆ
+  }
+
+  void _editImage(BuildContext context, String imagePath) async {
+    final pathToSend = await _prepareImagePath(context, imagePath);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditPage(imagePath: pathToSend),
+      ),
+    );
   }
 
   @override
@@ -64,7 +72,7 @@ class FavoritePage extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final imagePath = favorites[index];
                     final fileName = imagePath.split('/').last;
-                    final isFavorite = true; // อยู่หน้า Favorite
+                    final isFavorite = true; // หน้า Favorite แสดงเป็น ❤️ เสมอ
 
                     return Card(
                       elevation: 4,
@@ -85,23 +93,19 @@ class FavoritePage extends StatelessWidget {
                                 children: [
                                   GestureDetector(
                                     onTap: () {
-                                      if (imagePath.startsWith('assets/') ||
-                                          File(imagePath).existsSync()) {
-                                        showDialog(
-                                          context: context,
-                                          builder: (_) => Dialog(
-                                            backgroundColor: Colors.transparent,
-                                            insetPadding:
-                                                const EdgeInsets.all(10),
-                                            child: InteractiveViewer(
-                                              child: imagePath
-                                                      .startsWith('assets/')
-                                                  ? Image.asset(imagePath)
-                                                  : Image.file(File(imagePath)),
-                                            ),
+                                      showDialog(
+                                        context: context,
+                                        builder: (_) => Dialog(
+                                          backgroundColor: Colors.transparent,
+                                          insetPadding:
+                                              const EdgeInsets.all(10),
+                                          child: InteractiveViewer(
+                                            child: imagePath.startsWith('assets/')
+                                                ? Image.asset(imagePath)
+                                                : Image.file(File(imagePath)),
                                           ),
-                                        );
-                                      }
+                                        ),
+                                      );
                                     },
                                     child: imagePath.startsWith('assets/')
                                         ? Image.asset(imagePath,
@@ -128,15 +132,15 @@ class FavoritePage extends StatelessWidget {
                                       child: Icon(
                                         isFavorite
                                             ? Icons.favorite
-                                            // ignore: dead_code
                                             : Icons.favorite_border,
                                         color: Colors.red,
                                         size: 28,
                                         shadows: const [
                                           Shadow(
-                                              blurRadius: 3,
-                                              color: Colors.black45,
-                                              offset: Offset(1, 1))
+                                            blurRadius: 3,
+                                            color: Colors.black45,
+                                            offset: Offset(1, 1),
+                                          )
                                         ],
                                       ),
                                     ),
@@ -145,7 +149,7 @@ class FavoritePage extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // ชื่อไฟล์บรรทัดแรก
+                          // ชื่อไฟล์
                           Padding(
                             padding: const EdgeInsets.symmetric(
                                 vertical: 6, horizontal: 8),
@@ -157,7 +161,7 @@ class FavoritePage extends StatelessWidget {
                                   const TextStyle(fontWeight: FontWeight.w600),
                             ),
                           ),
-                          // ปุ่ม Edit + Start บรรทัดที่ 2
+                          // ปุ่ม Edit + Start
                           Padding(
                             padding: const EdgeInsets.only(
                                 left: 4, right: 4, bottom: 6),
@@ -181,7 +185,8 @@ class FavoritePage extends StatelessWidget {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                          builder: (context) => RobotPage()),
+                                          builder: (context) =>
+                                              const RobotPage()),
                                     );
                                   },
                                 ),

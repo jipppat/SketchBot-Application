@@ -36,8 +36,10 @@ class _ProfilePageState extends State<ProfilePage> {
       _email = user.email ?? "";
     });
 
-    final doc =
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
 
     if (doc.exists && mounted) {
       final data = doc.data() ?? {};
@@ -139,9 +141,12 @@ class _ProfilePageState extends State<ProfilePage> {
                           ? FileImage(_imageFile!)
                           : (_imageUrl != null && _imageUrl!.isNotEmpty
                               ? NetworkImage(_imageUrl!)
-                              : const AssetImage(
-                                      'assets/images/default_profile.png'))
-                          as ImageProvider,
+                              : null) as ImageProvider?,
+                      child: (_imageFile == null &&
+                              (_imageUrl == null || _imageUrl!.isEmpty))
+                          ? const Icon(Icons.person,
+                              size: 55, color: Colors.white)
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -215,7 +220,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,

@@ -28,6 +28,8 @@ dependencies:
   firebase_storage: ^11.7.7
   firebase_app_check: ^0.2.2+2
   google_sign_in: ^6.2.1
+  device_info_plus: ^10.1.0
+
 
 dev_dependencies:
   flutter_test:
