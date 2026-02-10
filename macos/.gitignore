@@ -1,0 +1,14 @@
+# Flutter
+.dart_tool/
+.build/
+
+# Android
+android/.gradle/
+android/app/google-services.json
+
+# iOS / macOS
+ios/Pods/
+macos/Pods/
+
+# Firebase
+lib/firebase_options.dart
